@@ -344,6 +344,8 @@ async function sb(table,cols,dateCol,from,to){
   return out;
 }
 const S=(a,f)=>a.reduce((s,x)=>s+(parseFloat(f(x))||0),0);
+// CTR de Meta por fila: si la columna ctr viene vacía (ETL sin CTR), se calcula con clicks/impresiones
+const ctrOf=x=>{const c=parseFloat(x.ctr);if(isFinite(c))return c;const i=+x.impressions||0;return i?(+x.clicks||0)/i*100:0;};
 
 /* ============ ESTADO + CONFIG ============ */
 let CFG=null;                 // fila de eventos
@@ -390,7 +392,7 @@ async function loadData(){
       sb(T('revenue'),'date,source_medium,purchase_revenue,transactions,sessions,total_users,add_to_carts','date',pFrom,E_cur),
       sb(T('ga4_sessions'),'date,source_medium,total_users,sessions,transactions,total_revenue','date',pFrom,E_cur),
       sb(T('tiendanube_orders'),'date,order_payment_status,order_total_paid,order_total_products','date',pFrom,E_cur),
-      sb(T('meta_ads'),'date,campaign_name,amount_spent,impressions,reach,frequency,landing_page_views,website_purchases,purchases_conv_value,video_view_3s,ctr,cpm','date',pFrom,E_cur),
+      sb(T('meta_ads'),'date,campaign_name,amount_spent,impressions,reach,frequency,landing_page_views,website_purchases,purchases_conv_value,video_view_3s,ctr,cpm,clicks','date',pFrom,E_cur),
       sb(T('google_ads'),'*',   // * : no todos los sellers tienen ctr/search_impression_share; una columna faltante da 400 y se pierde Google entero
       'date',pFrom,E_cur),
       sb(T('mercado_ads'),'fecha,campaign_name,cost,impressions,clicks,total_amount,units_quantity,campaign_acos_target','fecha',pFrom,E_cur),
@@ -463,7 +465,7 @@ function headFor(a,b){
   // meta
   const invMeta=S(mt,x=>x.amount_spent), factMeta=S(mt,x=>x.purchases_conv_value), compMeta=S(mt,x=>x.website_purchases),
         imprMeta=S(mt,x=>x.impressions), lpvMeta=S(mt,x=>x.landing_page_views), v3=S(mt,x=>x.video_view_3s),
-        ctrMw=imprMeta?S(mt,x=>(parseFloat(x.ctr)||0)*(parseFloat(x.impressions)||0))/imprMeta:0,
+        ctrMw=imprMeta?S(mt,x=>ctrOf(x)*(parseFloat(x.impressions)||0))/imprMeta:0,
         freqMw=S(mt,x=>x.reach)?S(mt,x=>(parseFloat(x.frequency)||0)*(parseFloat(x.reach)||0))/S(mt,x=>x.reach):0;
   // google
   const invGoogle=S(gg,x=>x.cost), imprG=S(gg,x=>x.impressions);
@@ -675,7 +677,7 @@ function paTab(D){
   // ADS: por campaña (agrupadas)
   const camps={};
   (h._rowsMeta||[]).forEach(r=>{const k=r.campaign_name||'(sin nombre)';const c=camps[k]||(camps[k]={n:k,impr:0,sp:0,val:0,comp:0,ctrw:0});
-    c.impr+=+r.impressions||0;c.sp+=+r.amount_spent||0;c.val+=+r.purchases_conv_value||0;c.comp+=+r.website_purchases||0;c.ctrw+=(+r.ctr||0)*(+r.impressions||0);});
+    c.impr+=+r.impressions||0;c.sp+=+r.amount_spent||0;c.val+=+r.purchases_conv_value||0;c.comp+=+r.website_purchases||0;c.ctrw+=ctrOf(r)*(+r.impressions||0);});
   const adArr=Object.values(camps).map(c=>({...c,ctr:c.impr?c.ctrw/c.impr:0,acos:c.val?c.sp/c.val*100:0})).sort((a,b)=>b.val-a.val).slice(0,6);
   const adHtml=adArr.map((a,i)=>`<div class="ad ${i===0?'top':''}"><div class="adh"><div class="adn">${i+1}</div>
     <div class="adt"><b>${a.n}</b><span>Meta Ads · campaña</span></div>${i===0?'<span class="chip c-acc">Top por valor de compras</span>':''}</div>
